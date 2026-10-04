@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  folders     Folder[]
+  works       Work[]
+  collections Collection[]
+}
+
+model Folder {
+  id        String   @id @default(cuid())
+  name      String
+  parentId  String?
+  userId    String
+  isSystem  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   Folder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children Folder[] @relation("FolderHierarchy")
+  works    Work[]
+
+  @@index([userId])
+  @@index([parentId])
+}
+
+model Work {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @default("")
+  userId    String
+  folderId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder      Folder           @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  collections CollectionWork[]
+
+  @@index([userId])
+  @@index([folderId])
+}
+
+model Collection {
+  id        String   @id @default(cuid())
+  name      String
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  works CollectionWork[]
+
+  @@index([userId])
+}
+
+model CollectionWork {
+  collectionId String
+  workId       String
+  addedAt      DateTime @default(now())
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  work       Work       @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  @@id([collectionId, workId])
+}
