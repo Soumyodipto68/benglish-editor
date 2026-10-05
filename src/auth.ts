@@ -3,6 +3,7 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 
 import { prisma } from "@/lib/prisma";
+import { createDefaultFolders } from "@/lib/createDefaultFolders";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -20,5 +21,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
   pages: {
     signIn: "/login",
+  },
+
+  callbacks: {
+    async signIn({ user }) {
+      if (user.id) {
+        await createDefaultFolders(user.id);
+      }
+      return true;
+    },
   },
 });
