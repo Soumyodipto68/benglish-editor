@@ -40,47 +40,47 @@ export default function NewWorkButton({
     setError("");
   }
 
-  async function createWork() {
-    const workTitle = title.trim();
+ async function createWork() {
+  const workTitle = title.trim();
 
-    if (!workTitle) {
-      setError("Enter a work title");
+  if (!workTitle) {
+    setError("Enter a work title");
+    return;
+  }
+
+  try {
+    setLoading(true);
+    setError("");
+
+    const response = await fetch("/api/works", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: workTitle,
+        folderId: folderId || null,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      setError(data.error ?? "Failed to create work");
       return;
     }
 
-    try {
-      setLoading(true);
-      setError("");
+    setIsOpen(false);
+    setTitle("");
 
-      const response = await fetch("/api/works", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: workTitle,
-          folderId: folderId || null,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error ?? "Failed to create work");
-        return;
-      }
-
-      setIsOpen(false);
-      setTitle("");
-
-      router.refresh();
-    } catch (error) {
-      console.error(error);
-      setError("Something went wrong");
-    } finally {
-      setLoading(false);
-    }
+    router.push(`/work/${data.work.id}`);
+  } catch (error) {
+    console.error(error);
+    setError("Something went wrong");
+  } finally {
+    setLoading(false);
   }
+}
 
   return (
     <>
