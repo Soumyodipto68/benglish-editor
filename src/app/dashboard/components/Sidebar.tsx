@@ -1,4 +1,5 @@
 import Explorer from "./Explorer";
+import Collections from "./Collections";
 
 type Work = {
   id: string;
@@ -16,6 +17,7 @@ type Folder = {
 
 type SidebarProps = {
   folders: Folder[];
+  userId: string;
   selectedFolderId?: string;
   selectedWorkId?: string;
   user: {
@@ -27,6 +29,7 @@ type SidebarProps = {
 
 export default function Sidebar({
   folders,
+  userId,
   selectedFolderId,
   selectedWorkId,
   user,
@@ -46,7 +49,8 @@ export default function Sidebar({
         selectedFolderId={selectedFolderId}
         selectedWorkId={selectedWorkId}
       />
-
+      {/* Collections */}
+      <Collections userId={userId} />
       {/* User */}
       <div className="border-t border-zinc-800 p-3">
         <div className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-zinc-900">

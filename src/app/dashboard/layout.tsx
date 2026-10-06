@@ -22,6 +22,7 @@ export default async function DashboardLayout({
     <div className="flex h-screen overflow-hidden bg-zinc-950 text-white">
       <Sidebar
         folders={folders}
+        userId={session.user.id}
         user={{
           name: session.user.name,
           email: session.user.email,
