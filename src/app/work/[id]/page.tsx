@@ -43,6 +43,7 @@ export default async function WorkPage({ params }: WorkPageProps) {
     <div className="flex h-screen overflow-hidden bg-zinc-950 text-white">
       <Sidebar
         folders={folders}
+        userId={session.user.id}
         selectedFolderId={work.folderId}
         selectedWorkId={work.id}
         user={{
