@@ -113,10 +113,12 @@ model Collection {
 model CollectionWork {
   collectionId String
   workId       String
+  order        Int      @default(0)
   addedAt      DateTime @default(now())
 
   collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   work       Work       @relation(fields: [workId], references: [id], onDelete: Cascade)
 
   @@id([collectionId, workId])
+  @@index([collectionId, order])
 }
