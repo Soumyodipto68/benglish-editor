@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+
 import NewFolderButton from "./NewFolderButton";
+import NewWorkButton from "./NewWorkButton";
 
 type Work = {
   id: string;
@@ -37,11 +40,23 @@ function FolderItem({
   selectedWorkId?: string;
   allowNewFolder?: boolean;
 }) {
-  const [isOpen, setIsOpen] = useState(true);
+  const router = useRouter();
+
+  const [isOpen, setIsOpen] = useState(false);
 
   const hasChildren = folder.children.length > 0 || folder.works.length > 0;
 
   const isSelected = selectedFolderId === folder.id;
+
+  function handleFolderClick() {
+    if (hasChildren) {
+      setIsOpen((value) => !value);
+    }
+  }
+
+  function handleFolderDoubleClick() {
+    router.push(`/dashboard?folder=${encodeURIComponent(folder.id)}`);
+  }
 
   return (
     <div>
@@ -53,33 +68,43 @@ function FolderItem({
         style={{
           paddingLeft: `${12 + level * 16}px`,
         }}
+        onDoubleClick={handleFolderDoubleClick}
       >
         {/* Expand / collapse */}
         <button
           type="button"
-          onClick={() => {
-            if (hasChildren) {
-              setIsOpen((value) => !value);
-            }
-          }}
+          onClick={handleFolderClick}
           className="flex h-7 w-5 shrink-0 items-center justify-center text-xs text-zinc-500"
           aria-label={isOpen ? "Collapse folder" : "Expand folder"}
         >
           {hasChildren ? (isOpen ? "▾" : "▸") : ""}
         </button>
 
-        {/* Folder */}
-        <Link
-          href={`/dashboard?folder=${encodeURIComponent(folder.id)}`}
-          className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-sm text-zinc-300"
+        {/* Folder name */}
+        <button
+          type="button"
+          onClick={handleFolderClick}
+          onDoubleClick={handleFolderDoubleClick}
+          className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-left text-sm text-zinc-300"
         >
           <span className="text-sm">{isOpen && hasChildren ? "📂" : "📁"}</span>
 
           <span className="truncate">{folder.name}</span>
-        </Link>
+        </button>
 
-        {/* New Folder button */}
-        {allowNewFolder && <NewFolderButton parentId={folder.id} />}
+        {/* Actions */}
+        <div className="flex items-center pr-2">
+          {folder.name !== "Others" && (
+            <NewWorkButton
+              folders={[{ id: folder.id, name: folder.name }]}
+              defaultFolderId={folder.id}
+              compact
+            />
+          )}
+
+          {/* Only Others and its descendants can create folders */}
+          {allowNewFolder && <NewFolderButton parentId={folder.id} />}
+        </div>
       </div>
 
       {/* Contents */}
@@ -104,7 +129,7 @@ function FolderItem({
             return (
               <Link
                 key={work.id}
-                href={`/dashboard?work=${encodeURIComponent(work.id)}`}
+                href={`/work/${work.id}`}
                 className={`flex items-center gap-2 py-1.5 pr-3 text-sm ${
                   isWorkSelected
                     ? "bg-zinc-800 text-white"
