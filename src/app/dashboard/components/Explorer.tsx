@@ -191,7 +191,7 @@ export default function Explorer({
       </div>
 
       {/* Folder tree */}
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="flex-1 overflow-hidden py-2">
         {rootFolders.length === 0 ? (
           <p className="px-5 py-3 text-xs text-zinc-600">No folders found.</p>
         ) : (

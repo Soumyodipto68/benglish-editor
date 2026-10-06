@@ -40,7 +40,7 @@ export default async function WorkPage({ params }: WorkPageProps) {
   const folders = await getWorkspaceFolders(session.user.id);
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-white">
+    <div className="flex h-screen overflow-hidden bg-zinc-950 text-white">
       <Sidebar
         folders={folders}
         selectedFolderId={work.folderId}
@@ -52,7 +52,7 @@ export default async function WorkPage({ params }: WorkPageProps) {
         }}
       />
 
-      <main className="min-w-0 flex-1">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         <div className="p-8">
           <WorkEditor
             workId={work.id}
