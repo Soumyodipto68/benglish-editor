@@ -1,8 +1,4 @@
-import {
-  CONSONANTS,
-  INDEPENDENT_VOWELS,
-  VOWEL_SIGNS,
-} from "./rules";
+import { CONSONANTS, INDEPENDENT_VOWELS, VOWEL_SIGNS } from "./rules";
 
 import type { ResolvedSyllable } from "./vowel-context";
 
@@ -20,9 +16,7 @@ function renderVowelSign(vowel: string): string {
   return VOWEL_SIGNS[vowel] ?? "";
 }
 
-export function renderSyllables(
-  syllables: ResolvedSyllable[],
-): string {
+export function renderSyllables(syllables: ResolvedSyllable[]): string {
   let result = "";
 
   for (const syllable of syllables) {
@@ -37,9 +31,7 @@ export function renderSyllables(
      */
     if (syllable.consonant === null) {
       if (syllable.resolvedVowel) {
-        result += renderIndependentVowel(
-          syllable.resolvedVowel,
-        );
+        result += renderIndependentVowel(syllable.resolvedVowel);
       }
 
       continue;
@@ -56,7 +48,7 @@ export function renderSyllables(
      *
      * The next syllable will provide the next consonant.
      */
-    if (syllable.joined) {
+    if (syllable.needsVirama) {
       result += renderConsonant(syllable.consonant);
       result += VIRAMA;
 
@@ -83,9 +75,7 @@ export function renderSyllables(
      * For "a", the vowel sign is empty.
      */
     if (syllable.resolvedVowel) {
-      result += renderVowelSign(
-        syllable.resolvedVowel,
-      );
+      result += renderVowelSign(syllable.resolvedVowel);
     }
 
     /*
@@ -100,9 +90,7 @@ export function renderSyllables(
      * ম + ে + ন
      */
     if (syllable.finalConsonant) {
-      result += renderConsonant(
-        syllable.finalConsonant,
-      );
+      result += renderConsonant(syllable.finalConsonant);
     }
   }
 

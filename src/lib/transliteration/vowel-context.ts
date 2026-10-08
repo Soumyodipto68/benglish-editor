@@ -1,77 +1,94 @@
 import type { Syllable } from "./syllable";
 
-/**
- * Bengali vowel interpretation.
- *
- * The Roman "a" is context-sensitive.
- *
- * Example:
- *
- * bhalo → bha + lo → ভা + লো
- * amar  → a + mar  → অ + মার
- *
- * This layer decides how the phonetic "a" should behave.
- */
-
 export type ResolvedSyllable = Syllable & {
   resolvedVowel: string | null;
 };
 
-function isIndependentVowel(syllable: Syllable): boolean {
-  return syllable.consonant === null;
-}
-
-function isConsonantSyllable(syllable: Syllable): boolean {
-  return syllable.consonant !== null;
-}
-
-function resolveInitialA(
+function resolveVowel(
   syllable: Syllable,
   index: number,
-): string {
-  /*
-   * An independent initial "a" normally represents
-   * Bengali অ.
-   *
-   * Example:
-   *
-   * ami  → অ
-   * amar → অ
-   * apni → অ
-   */
-  if (isIndependentVowel(syllable) && syllable.vowel === "a") {
-    return "a";
+  syllables: Syllable[],
+): string | null {
+  const vowel = syllable.vowel;
+
+  if (!vowel) {
+    return null;
   }
 
   /*
-   * A consonant + "a" is initially treated as
-   * the short/default vowel.
+   * --------------------------------------------------
+   * Independent "a"
+   * --------------------------------------------------
    *
-   * The next layer will refine this further.
+   * Roman Bengali normally uses "a" for Bengali আ
+   * when it appears as an explicit initial vowel.
    *
-   * Example:
-   *
-   * k + a → ক
-   * m + a → ম
+   * ami  → আমি
+   * amar → আমার
+   * apni → আপনি
    */
   if (
-    isConsonantSyllable(syllable) &&
-    syllable.vowel === "a"
+    syllable.consonant === null &&
+    vowel === "a"
+  ) {
+    return "aa";
+  }
+
+  /*
+   * --------------------------------------------------
+   * Consonant + "a"
+   * --------------------------------------------------
+   *
+   * In Banglish, explicit "a" after a consonant
+   * commonly represents the long/open আ sound.
+   *
+   * bhalo → ভা
+   */
+  if (
+    syllable.consonant !== null &&
+    vowel === "a"
+  ) {
+    return "aa";
+  }
+
+  /*
+   * --------------------------------------------------
+   * Roman "o" in a closed syllable
+   * --------------------------------------------------
+   *
+   * kemon
+   *
+   * ke + mon
+   *
+   * The final consonant closes the syllable, so
+   * the "o" behaves like Bengali's inherent vowel.
+   *
+   * mon → মন
+   *
+   * rather than:
+   *
+   * মো + ন → মোন
+   */
+  if (
+    syllable.consonant !== null &&
+    vowel === "o" &&
+    syllable.finalConsonant !== null
   ) {
     return "a";
   }
 
-  return syllable.vowel;
+  return vowel;
 }
 
-/**
- * Resolve phonetic vowels according to their context.
- */
 export function resolveVowels(
   syllables: Syllable[],
 ): ResolvedSyllable[] {
   return syllables.map((syllable, index) => ({
     ...syllable,
-    resolvedVowel: resolveInitialA(syllable, index),
+    resolvedVowel: resolveVowel(
+      syllable,
+      index,
+      syllables,
+    ),
   }));
 }

@@ -7,7 +7,18 @@ export type Syllable = {
   consonant: string | null;
   vowel: string | null;
   finalConsonant: string | null;
+
+  /*
+   * Whether this consonant participates in a
+   * consonant cluster.
+   */
   joined: boolean;
+
+  /*
+   * Whether this consonant must be rendered
+   * with a virama.
+   */
+  needsVirama: boolean;
 };
 
 function matchToken(
@@ -80,6 +91,7 @@ export function parseSyllables(word: string): Syllable[] {
         vowel: independentVowel,
         finalConsonant: null,
         joined: false,
+        needsVirama: false,
       });
 
       index += independentVowel.length;
