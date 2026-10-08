@@ -1,7 +1,9 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import NewWorkButton from "./components/NewWorkButton";
+import WorkActions from "./components/WorkActions";
 
 type DashboardPageProps = {
   searchParams: Promise<{
@@ -200,21 +202,29 @@ export default async function DashboardPage({
                 key={work.id}
                 className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 transition hover:border-zinc-700"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <h3 className="font-semibold text-zinc-100">{work.title}</h3>
+                <Link href={`/work/${work.id}`} className="block">
+                  <div className="flex items-start justify-between gap-4">
+                    <h3 className="min-w-0 truncate font-semibold text-zinc-100">
+                      {work.title}
+                    </h3>
 
-                  <span className="shrink-0 rounded-full bg-zinc-800 px-2.5 py-1 text-xs text-zinc-400">
-                    {work.folder.name}
-                  </span>
+                    <span className="shrink-0 rounded-full bg-zinc-800 px-2.5 py-1 text-xs text-zinc-400">
+                      {work.folder.name}
+                    </span>
+                  </div>
+
+                  <p className="mt-3 line-clamp-3 text-sm text-zinc-500">
+                    {work.content || "No content yet."}
+                  </p>
+
+                  <p className="mt-4 text-xs text-zinc-600">
+                    Updated {work.updatedAt.toLocaleDateString()}
+                  </p>
+                </Link>
+
+                <div className="mt-3">
+                  <WorkActions workId={work.id} initialTitle={work.title} />
                 </div>
-
-                <p className="mt-3 line-clamp-3 text-sm text-zinc-500">
-                  {work.content || "No content yet."}
-                </p>
-
-                <p className="mt-4 text-xs text-zinc-600">
-                  Updated {work.updatedAt.toLocaleDateString()}
-                </p>
               </div>
             ))}
           </div>
