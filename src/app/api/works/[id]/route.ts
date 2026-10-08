@@ -65,3 +65,51 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     return NextResponse.json({ error: "Failed to save work" }, { status: 500 });
   }
 }
+export async function DELETE(
+  request: Request,
+  { params }: RouteContext,
+) {
+  try {
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
+    const { id } = await params;
+
+    const existingWork = await prisma.work.findFirst({
+      where: {
+        id,
+        userId: session.user.id,
+      },
+    });
+
+    if (!existingWork) {
+      return NextResponse.json(
+        { error: "Work not found" },
+        { status: 404 },
+      );
+    }
+
+    await prisma.work.delete({
+      where: {
+        id: existingWork.id,
+      },
+    });
+
+    return NextResponse.json({
+      message: "Work deleted successfully",
+    });
+  } catch (error) {
+    console.error("Failed to delete work:", error);
+
+    return NextResponse.json(
+      { error: "Failed to delete work" },
+      { status: 500 },
+    );
+  }
+}

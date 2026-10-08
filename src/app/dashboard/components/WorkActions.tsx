@@ -14,6 +14,7 @@ export default function WorkActions({
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(initialTitle);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   async function handleRename() {
     const trimmedTitle = title.trim();
@@ -52,10 +53,38 @@ export default function WorkActions({
       window.location.reload();
     } catch (error) {
       console.error("Failed to rename work:", error);
+
       setTitle(initialTitle);
       setIsEditing(false);
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    const confirmed = window.confirm(
+      `Delete "${initialTitle}"? This action cannot be undone.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+
+      const response = await fetch(`/api/works/${workId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete work");
+      }
+
+      window.location.reload();
+    } catch (error) {
+      console.error("Failed to delete work:", error);
+      setIsDeleting(false);
     }
   }
 
@@ -106,12 +135,24 @@ export default function WorkActions({
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => setIsEditing(true)}
-      className="rounded-md px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200"
-    >
-      Rename
-    </button>
+    <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={() => setIsEditing(true)}
+        disabled={isDeleting}
+        className="rounded-md px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-50"
+      >
+        Rename
+      </button>
+
+      <button
+        type="button"
+        onClick={handleDelete}
+        disabled={isDeleting}
+        className="rounded-md px-2 py-1 text-xs text-red-500 transition hover:bg-red-950/40 hover:text-red-400 disabled:opacity-50"
+      >
+        {isDeleting ? "Deleting..." : "Delete"}
+      </button>
+    </div>
   );
 }
