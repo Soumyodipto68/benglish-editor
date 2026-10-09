@@ -17,78 +17,82 @@ function resolveVowel(
 
   /*
    * --------------------------------------------------
-   * Independent "a"
+   * INDEPENDENT A
    * --------------------------------------------------
    *
-   * Roman Bengali normally uses "a" for Bengali আ
-   * when it appears as an explicit initial vowel.
+   * a    → অ
+   * aa   → আ
    *
-   * ami  → আমি
-   * amar → আমার
-   * apni → আপনি
+   * Existing baseline behavior.
    */
-  if (
-    syllable.consonant === null &&
-    vowel === "a"
-  ) {
-    return "aa";
+  if (syllable.consonant === null && vowel === "a") {
+    return "a";
   }
 
   /*
    * --------------------------------------------------
-   * Consonant + "a"
+   * INITIAL / INDEPENDENT O
    * --------------------------------------------------
    *
-   * In Banglish, explicit "a" after a consonant
-   * commonly represents the long/open আ sound.
+   * A standalone "o" at the beginning of a
+   * multi-syllable word often represents অ.
    *
-   * bhalo → ভা
+   * onek → অনেক
+   *
+   * But a standalone word:
+   *
+   * o → ও
    */
-  if (
-    syllable.consonant !== null &&
-    vowel === "a"
-  ) {
-    return "aa";
+  if (syllable.consonant === null && vowel === "o") {
+    if (syllables.length > 1) {
+      return "a";
+    }
+
+    return "o";
   }
 
   /*
    * --------------------------------------------------
-   * Roman "o" in a closed syllable
+   * CLOSED O
    * --------------------------------------------------
    *
-   * kemon
+   * kemon → কেমন
    *
-   * ke + mon
+   * But a single-syllable word:
    *
-   * The final consonant closes the syllable, so
-   * the "o" behaves like Bengali's inherent vowel.
+   * bon → বোন
    *
-   * mon → মন
-   *
-   * rather than:
-   *
-   * মো + ন → মোন
+   * therefore we only reduce o → a when the
+   * syllable is not the entire word.
    */
   if (
     syllable.consonant !== null &&
     vowel === "o" &&
     syllable.finalConsonant !== null
   ) {
+    if (syllables.length === 1) {
+      return "o";
+    }
+
     return "a";
+  }
+
+  /*
+   * --------------------------------------------------
+   * CONSONANT + A
+   * --------------------------------------------------
+   */
+  if (syllable.consonant !== null && vowel === "a") {
+    return "aa";
   }
 
   return vowel;
 }
 
-export function resolveVowels(
-  syllables: Syllable[],
-): ResolvedSyllable[] {
+export function resolveVowels(syllables: Syllable[]): ResolvedSyllable[] {
   return syllables.map((syllable, index) => ({
     ...syllable,
-    resolvedVowel: resolveVowel(
-      syllable,
-      index,
-      syllables,
-    ),
+
+    resolvedVowel: resolveVowel(syllable, index, syllables),
   }));
 }

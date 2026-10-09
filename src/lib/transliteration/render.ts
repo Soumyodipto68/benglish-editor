@@ -1,6 +1,6 @@
 import { CONSONANTS, INDEPENDENT_VOWELS, VOWEL_SIGNS } from "./rules";
 
-import type { ResolvedSyllable } from "./vowel-context";
+import type { ResolvedConsonantSyllable } from "./consonant-context";
 
 const VIRAMA = "্";
 
@@ -9,25 +9,21 @@ function renderIndependentVowel(vowel: string): string {
 }
 
 function renderConsonant(consonant: string): string {
-  return CONSONANTS[consonant] ?? consonant;
+  return consonant;
 }
 
 function renderVowelSign(vowel: string): string {
   return VOWEL_SIGNS[vowel] ?? "";
 }
 
-export function renderSyllables(syllables: ResolvedSyllable[]): string {
+export function renderSyllables(
+  syllables: ResolvedConsonantSyllable[],
+): string {
   let result = "";
 
   for (const syllable of syllables) {
     /*
-     * --------------------------------------------------
-     * Independent vowel
-     * --------------------------------------------------
-     *
-     * ami
-     *
-     * a → অ
+     * Standalone vowel.
      */
     if (syllable.consonant === null) {
       if (syllable.resolvedVowel) {
@@ -38,59 +34,35 @@ export function renderSyllables(syllables: ResolvedSyllable[]): string {
     }
 
     /*
-     * --------------------------------------------------
-     * Joined consonant
-     * --------------------------------------------------
-     *
-     * apni
-     *
-     * p + virama
-     *
-     * The next syllable will provide the next consonant.
+     * Main consonant.
+     */
+    const consonant =
+      syllable.resolvedConsonant ??
+      CONSONANTS[syllable.consonant] ??
+      syllable.consonant;
+
+    result += renderConsonant(consonant);
+
+    /*
+     * Virama.
      */
     if (syllable.needsVirama) {
-      result += renderConsonant(syllable.consonant);
       result += VIRAMA;
-
       continue;
     }
 
     /*
-     * --------------------------------------------------
-     * Normal consonant
-     * --------------------------------------------------
-     */
-    result += renderConsonant(syllable.consonant);
-
-    /*
-     * --------------------------------------------------
-     * Vowel
-     * --------------------------------------------------
-     *
-     * ka → ক
-     * ki → কি
-     * ke → কে
-     * ko → কো
-     *
-     * For "a", the vowel sign is empty.
+     * Vowel sign.
      */
     if (syllable.resolvedVowel) {
       result += renderVowelSign(syllable.resolvedVowel);
     }
 
     /*
-     * --------------------------------------------------
-     * Final consonant
-     * --------------------------------------------------
-     *
-     * kemon
-     *
-     * mon
-     *   ↓
-     * ম + ে + ন
+     * Final consonant.
      */
-    if (syllable.finalConsonant) {
-      result += renderConsonant(syllable.finalConsonant);
+    if (syllable.finalConsonant && syllable.resolvedFinalConsonant) {
+      result += syllable.resolvedFinalConsonant;
     }
   }
 

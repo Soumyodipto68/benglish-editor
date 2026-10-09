@@ -64,7 +64,13 @@ export const SPECIAL_CONSONANTS: Record<string, string> = {
   br: "ব্র",
   dr: "দ্র",
   fr: "ফ্র",
-  bh: "ভ",
+};
+
+export const CONTEXTUAL_CONSONANTS: Record<
+  string,
+  string[]
+> = {
+  ch: ["চ", "ছ"],
 };
 
 export const CONSONANT_KEYS = Object.keys(CONSONANTS).sort(
