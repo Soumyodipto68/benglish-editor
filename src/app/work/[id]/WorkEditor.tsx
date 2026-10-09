@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -40,9 +41,9 @@ export default function WorkEditor({
   const [content, setContent] = useState(initialContent);
   const [bengaliTyping, setBengaliTyping] = useState(true);
 
-  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">(
-    "saved",
-  );
+  const [saveStatus, setSaveStatus] = useState<
+    "saved" | "saving" | "error"
+  >("saved");
 
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [suggestionRange, setSuggestionRange] =
@@ -55,10 +56,8 @@ export default function WorkEditor({
   });
 
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const transliterationTimeout = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const transliterationTimeout =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const editorBodyRef = useRef<HTMLDivElement>(null);
@@ -66,17 +65,16 @@ export default function WorkEditor({
 
   const pendingCaret = useRef<number | null>(null);
   const contentRef = useRef(initialContent);
+  const titleRef = useRef(initialTitle);
   const activeWordRef = useRef<ActiveWord | null>(null);
   const requestIdRef = useRef(0);
+  const bengaliTypingRef = useRef(true);
 
   const candidateCache = useRef(new Map<string, string[]>());
 
   useEffect(() => {
     return () => {
-      if (saveTimeout.current) {
-        clearTimeout(saveTimeout.current);
-      }
-
+      if (saveTimeout.current) clearTimeout(saveTimeout.current);
       if (transliterationTimeout.current) {
         clearTimeout(transliterationTimeout.current);
       }
@@ -84,24 +82,446 @@ export default function WorkEditor({
   }, []);
 
   useLayoutEffect(() => {
-    if (pendingCaret.current === null || !textareaRef.current) {
-      return;
-    }
+    if (pendingCaret.current === null || !textareaRef.current) return;
 
     const position = pendingCaret.current;
-
     textareaRef.current.setSelectionRange(position, position);
     pendingCaret.current = null;
   }, [content]);
 
-  // Position the popup at the actual textarea caret.
+  function clearSuggestions() {
+    setSuggestions([]);
+    setSuggestionRange(null);
+    setActiveSuggestion(0);
+  }
+
+  function scheduleSave(nextTitle: string, nextContent: string) {
+    setSaveStatus("saving");
+
+    if (saveTimeout.current) clearTimeout(saveTimeout.current);
+
+    saveTimeout.current = setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/works/${workId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: nextTitle,
+            content: nextContent,
+          }),
+        });
+
+        if (!response.ok) throw new Error("Failed to save");
+
+        setSaveStatus("saved");
+      } catch (error) {
+        console.error(error);
+        setSaveStatus("error");
+      }
+    }, 800);
+  }
+
+  function updateContent(value: string) {
+    contentRef.current = value;
+    setContent(value);
+    scheduleSave(titleRef.current, value);
+  }
+
+  function handleTitleChange(value: string) {
+    titleRef.current = value;
+    setTitle(value);
+    scheduleSave(value, contentRef.current);
+  }
+
+  async function getCandidates(word: string): Promise<string[]> {
+    const cacheKey = `bn:${word.toLowerCase()}`;
+    const cached = candidateCache.current.get(cacheKey);
+
+    if (cached) return cached;
+
+    const response = await fetch("/api/transliterate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ word, language: "bn" }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Transliteration request failed");
+    }
+
+    const result: {
+      candidates?: string[];
+      converted?: string;
+    } = await response.json();
+
+    const values = [
+      ...new Set(
+        (result.candidates ?? [result.converted ?? word]).filter(
+          (candidate) =>
+            typeof candidate === "string" && candidate.length > 0,
+        ),
+      ),
+    ];
+
+    if (!values.includes(word)) values.push(word);
+
+    candidateCache.current.set(cacheKey, values);
+    return values;
+  }
+
+  function replaceWord(
+    start: number,
+    roman: string,
+    converted: string,
+    expectedFollowingCharacter?: string,
+  ) {
+    const current = contentRef.current;
+
+    // Never replace text that has changed since the request began.
+    if (current.slice(start, start + roman.length) !== roman) return;
+
+    const end = start + roman.length;
+    const nextCharacter = current[end] ?? "";
+
+    // Don't convert a partial word if the user is still typing it.
+    if (/[A-Za-z]/.test(nextCharacter)) return;
+
+    if (
+      expectedFollowingCharacter !== undefined &&
+      nextCharacter !== expectedFollowingCharacter
+    ) {
+      return;
+    }
+
+    const nextContent =
+      current.slice(0, start) +
+      converted +
+      current.slice(end);
+
+    const textarea = textareaRef.current;
+    const oldCaret = textarea?.selectionStart ?? current.length;
+    const delta = converted.length - roman.length;
+
+    if (oldCaret >= end) {
+      pendingCaret.current = oldCaret + delta;
+    }
+
+    activeWordRef.current = {
+      start,
+      roman,
+      converted,
+    };
+
+    updateContent(nextContent);
+  }
+
+  // Handles the current Roman word after the user pauses typing.
+  function scheduleAutomaticTransliteration(value: string) {
+    if (transliterationTimeout.current) {
+      clearTimeout(transliterationTimeout.current);
+    }
+
+    if (!bengaliTypingRef.current) return;
+
+    const match = value.match(/[A-Za-z]+$/);
+
+    if (!match || match[0].length < 2) return;
+
+    const word = match[0];
+    const start = value.length - word.length;
+    const requestId = ++requestIdRef.current;
+
+    transliterationTimeout.current = setTimeout(async () => {
+      const textarea = textareaRef.current;
+
+      if (
+        !textarea ||
+        textarea.selectionStart !== value.length ||
+        textarea.selectionEnd !== value.length ||
+        contentRef.current !== value
+      ) {
+        return;
+      }
+
+      try {
+        const candidates = await getCandidates(word);
+        const current = contentRef.current;
+
+        if (
+          requestId !== requestIdRef.current ||
+          !bengaliTypingRef.current
+        ) {
+          return;
+        }
+
+        // The user may have typed a space while the request was running.
+        // In that case, let the boundary handler deal with the word.
+        if (current.slice(start, start + word.length) !== word) return;
+        if (/[A-Za-z]/.test(current[start + word.length] ?? "")) return;
+
+        const options = [...new Set([...candidates, word])];
+        const converted = candidates[0] ?? word;
+
+        setSuggestions(options);
+        setActiveSuggestion(0);
+
+        if (converted !== word) {
+          const nextContent =
+            current.slice(0, start) +
+            converted +
+            current.slice(start + word.length);
+
+          activeWordRef.current = {
+            start,
+            roman: word,
+            converted,
+          };
+
+          setSuggestionRange({
+            start,
+            end: start + converted.length,
+            source: word,
+          });
+
+          const caret = textarea.selectionStart;
+          pendingCaret.current =
+            caret >= start + word.length
+              ? caret + converted.length - word.length
+              : caret;
+
+          updateContent(nextContent);
+        } else {
+          setSuggestionRange({
+            start,
+            end: start + word.length,
+            source: word,
+          });
+        }
+      } catch (error) {
+        console.error("Transliteration failed:", error);
+      }
+    }, 300);
+  }
+
+  // Convert a completed Roman word without blocking Space or Enter.
+  async function convertWordBeforeDelimiter(
+    value: string,
+    cursor: number,
+  ) {
+    if (!bengaliTypingRef.current || cursor < 2) return;
+
+    const beforeCursor = value.slice(0, cursor);
+    const match = beforeCursor.match(/[A-Za-z]+(?=[ \n,.;?!:]$)/);
+
+    if (!match) return;
+
+    const word = match[0];
+    const start = cursor - 1 - word.length;
+    const delimiter = value[cursor - 1];
+
+    if (start < 0) return;
+
+    const requestId = requestIdRef.current;
+
+    try {
+      const candidates = await getCandidates(word);
+
+      if (!bengaliTypingRef.current) return;
+
+      // Verify the same word and delimiter still exist.
+      const current = contentRef.current;
+
+      if (
+        current.slice(start, start + word.length) !== word ||
+        current[start + word.length] !== delimiter
+      ) {
+        return;
+      }
+
+      const converted = candidates[0] ?? word;
+
+      if (converted === word) return;
+
+      const nextContent =
+        current.slice(0, start) +
+        converted +
+        current.slice(start + word.length);
+
+      const textarea = textareaRef.current;
+      const caret = textarea?.selectionStart ?? cursor;
+
+      pendingCaret.current =
+        caret >= start + word.length
+          ? caret + converted.length - word.length
+          : caret;
+
+      activeWordRef.current = {
+        start,
+        roman: word,
+        converted,
+      };
+
+      // This request is allowed to finish after more typing, provided
+      // the exact Roman word and its delimiter are still unchanged.
+      void requestId;
+
+      updateContent(nextContent);
+    } catch (error) {
+      console.error("Boundary transliteration failed:", error);
+    }
+  }
+
+  function handleContentChange(value: string) {
+    const textarea = textareaRef.current;
+    const cursor = textarea?.selectionStart ?? value.length;
+    const previous = contentRef.current;
+    const activeWord = activeWordRef.current;
+
+    // If the user continues typing a Roman word after it was converted,
+    // restore the Roman spelling before processing the new input.
+    if (activeWord) {
+      const prefix = previous.slice(0, activeWord.start);
+      const convertedPrefix = prefix + activeWord.converted;
+
+      if (value.startsWith(convertedPrefix)) {
+        const appendedText = value.slice(convertedPrefix.length);
+
+        if (/^[A-Za-z]+$/.test(appendedText)) {
+          const restored =
+            prefix + activeWord.roman + appendedText;
+
+          activeWordRef.current = null;
+          requestIdRef.current++;
+          clearSuggestions();
+
+          pendingCaret.current =
+            prefix.length + activeWord.roman.length + appendedText.length;
+
+          updateContent(restored);
+          scheduleAutomaticTransliteration(restored);
+          return;
+        }
+      }
+
+      activeWordRef.current = null;
+    }
+
+    if (transliterationTimeout.current) {
+      clearTimeout(transliterationTimeout.current);
+    }
+
+    requestIdRef.current++;
+    clearSuggestions();
+
+    updateContent(value);
+
+    // Normal typing is already complete before this async operation starts.
+    if (
+      cursor > 0 &&
+      /[ \n,.;?!:]$/.test(value.slice(0, cursor)) &&
+      value.length >= previous.length
+    ) {
+      void convertWordBeforeDelimiter(value, cursor);
+    }
+
+    scheduleAutomaticTransliteration(value);
+  }
+
+  function chooseSuggestion(candidate: string) {
+    if (!suggestionRange) return;
+
+    const { start, end, source } = suggestionRange;
+    const current = contentRef.current;
+
+    const expected = activeWordRef.current?.converted ?? source;
+
+    if (current.slice(start, end) !== expected) {
+      if (current.slice(start, end) !== source) return;
+    }
+
+    const nextContent =
+      current.slice(0, start) +
+      candidate +
+      current.slice(end);
+
+    activeWordRef.current = {
+      start,
+      roman: source,
+      converted: candidate,
+    };
+
+    requestIdRef.current++;
+
+    if (transliterationTimeout.current) {
+      clearTimeout(transliterationTimeout.current);
+    }
+
+    clearSuggestions();
+    pendingCaret.current = start + candidate.length;
+
+    updateContent(nextContent);
+    textareaRef.current?.focus();
+  }
+
+  function handleContentKeyDown(
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) {
+    if (!suggestions.length || !suggestionRange) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveSuggestion((current) =>
+        (current + 1) % suggestions.length,
+      );
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveSuggestion(
+        (current) =>
+          (current - 1 + suggestions.length) % suggestions.length,
+      );
+      return;
+    }
+
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      chooseSuggestion(
+        suggestions[activeSuggestion] ?? suggestions[0],
+      );
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      clearSuggestions();
+    }
+
+    // Space, punctuation and Enter with no open suggestions are not
+    // intercepted. The browser inserts them normally.
+  }
+
+  function toggleBengaliTyping() {
+    const nextValue = !bengaliTyping;
+
+    bengaliTypingRef.current = nextValue;
+    setBengaliTyping(nextValue);
+
+    if (transliterationTimeout.current) {
+      clearTimeout(transliterationTimeout.current);
+    }
+
+    requestIdRef.current++;
+    activeWordRef.current = null;
+    clearSuggestions();
+  }
+
   const updatePopupPosition = useCallback(() => {
     const textarea = textareaRef.current;
     const wrapper = editorBodyRef.current;
 
-    if (!textarea || !wrapper || !suggestionRange) {
-      return;
-    }
+    if (!textarea || !wrapper || !suggestionRange) return;
 
     const caret = textarea.selectionStart;
     const textBeforeCaret = contentRef.current.slice(0, caret);
@@ -110,10 +530,9 @@ export default function WorkEditor({
     const wrapperRect = wrapper.getBoundingClientRect();
     const computed = window.getComputedStyle(textarea);
 
-    // Create an invisible mirror with the same text layout as the textarea.
     const mirror = document.createElement("div");
 
-    const copiedProperties = [
+    const properties = [
       "boxSizing",
       "width",
       "fontFamily",
@@ -133,20 +552,19 @@ export default function WorkEditor({
       "tabSize",
     ] as const;
 
-    for (const property of copiedProperties) {
+    for (const property of properties) {
       mirror.style[property] = computed[property];
     }
 
     mirror.style.position = "fixed";
-    mirror.style.left = `${textareaRect.left - textarea.scrollLeft}px`;
-    mirror.style.top = `${textareaRect.top - textarea.scrollTop}px`;
+    mirror.style.left = `${textareaRect.left}px`;
+    mirror.style.top = `${textareaRect.top}px`;
     mirror.style.height = "auto";
     mirror.style.minHeight = "0";
     mirror.style.maxHeight = "none";
     mirror.style.overflow = "hidden";
     mirror.style.visibility = "hidden";
     mirror.style.pointerEvents = "none";
-    mirror.style.zIndex = "-1";
 
     const textNode = document.createTextNode(textBeforeCaret);
     const marker = document.createElement("span");
@@ -163,12 +581,11 @@ export default function WorkEditor({
 
     const popupHeight = popupRef.current?.offsetHeight ?? 150;
     const popupWidth = popupRef.current?.offsetWidth ?? 280;
-    const gap = 4;
     const padding = 8;
+    const gap = 4;
 
     let top = markerRect.bottom - wrapperRect.top + gap;
 
-    // Place the popup above the caret when there isn't enough room below.
     if (top + popupHeight > wrapper.clientHeight - padding) {
       top = markerRect.top - wrapperRect.top - popupHeight - gap;
     }
@@ -191,39 +608,20 @@ export default function WorkEditor({
       ),
     );
 
-    setPopupPosition((previous) => {
-      if (
-        Math.abs(previous.top - top) < 1 &&
-        Math.abs(previous.left - left) < 1
-      ) {
-        return previous;
-      }
-
-      return { top, left };
-    });
+    setPopupPosition({ top, left });
   }, [suggestionRange]);
 
   useLayoutEffect(() => {
-    if (suggestions.length === 0 || !suggestionRange) {
-      return;
-    }
+    if (!suggestions.length || !suggestionRange) return;
 
     updatePopupPosition();
 
-    const textarea = textareaRef.current;
-
-    if (!textarea) {
-      return;
-    }
-
-    const handleReposition = () => updatePopupPosition();
-
-    window.addEventListener("resize", handleReposition);
-    window.addEventListener("scroll", handleReposition, true);
+    window.addEventListener("resize", updatePopupPosition);
+    window.addEventListener("scroll", updatePopupPosition, true);
 
     return () => {
-      window.removeEventListener("resize", handleReposition);
-      window.removeEventListener("scroll", handleReposition, true);
+      window.removeEventListener("resize", updatePopupPosition);
+      window.removeEventListener("scroll", updatePopupPosition, true);
     };
   }, [
     suggestions,
@@ -233,414 +631,13 @@ export default function WorkEditor({
     updatePopupPosition,
   ]);
 
-  // Keep the highlighted suggestion visible during keyboard navigation.
   useEffect(() => {
-    const popup = popupRef.current;
+    const activeItem = popupRef.current?.querySelector<HTMLElement>(
+      '[data-active="true"]',
+    );
 
-    if (!popup) {
-      return;
-    }
-
-    const activeItem = popup.querySelector<HTMLElement>('[data-active="true"]');
-
-    activeItem?.scrollIntoView({
-      block: "nearest",
-    });
+    activeItem?.scrollIntoView({ block: "nearest" });
   }, [activeSuggestion, suggestions]);
-
-  function clearSuggestions() {
-    setSuggestions([]);
-    setSuggestionRange(null);
-    setActiveSuggestion(0);
-  }
-
-  function scheduleSave(nextTitle: string, nextContent: string) {
-    setSaveStatus("saving");
-
-    if (saveTimeout.current) {
-      clearTimeout(saveTimeout.current);
-    }
-
-    saveTimeout.current = setTimeout(async () => {
-      try {
-        const response = await fetch(`/api/works/${workId}`, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            title: nextTitle,
-            content: nextContent,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error("Failed to save");
-        }
-
-        setSaveStatus("saved");
-      } catch (error) {
-        console.error(error);
-        setSaveStatus("error");
-      }
-    }, 800);
-  }
-
-  function updateContent(value: string) {
-    contentRef.current = value;
-    setContent(value);
-    scheduleSave(title, value);
-  }
-
-  function handleTitleChange(value: string) {
-    setTitle(value);
-    scheduleSave(value, contentRef.current);
-  }
-
-  async function getCandidates(word: string): Promise<string[]> {
-    const cacheKey = word.toLowerCase();
-    const cached = candidateCache.current.get(cacheKey);
-
-    if (cached) {
-      return cached;
-    }
-
-    const response = await fetch("/api/transliterate", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        word,
-        language: "bn",
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error("Transliteration request failed");
-    }
-
-    const result: {
-      candidates?: string[];
-      converted?: string;
-    } = await response.json();
-
-    const values = [
-      ...new Set(
-        (result.candidates ?? [result.converted ?? word]).filter(
-          (candidate) => typeof candidate === "string" && candidate.length > 0,
-        ),
-      ),
-    ];
-
-    if (!values.includes(word)) {
-      values.push(word);
-    }
-
-    candidateCache.current.set(cacheKey, values);
-
-    return values;
-  }
-
-  function scheduleAutomaticTransliteration(value: string) {
-    if (transliterationTimeout.current) {
-      clearTimeout(transliterationTimeout.current);
-    }
-
-    if (!bengaliTyping) {
-      return;
-    }
-
-    const match = value.match(/[A-Za-z]+$/);
-
-    if (!match || match[0].length < 2) {
-      return;
-    }
-
-    const word = match[0];
-    const start = value.length - word.length;
-    const requestContent = value;
-    const requestId = ++requestIdRef.current;
-
-    transliterationTimeout.current = setTimeout(async () => {
-      const textarea = textareaRef.current;
-
-      if (
-        !textarea ||
-        textarea.selectionStart !== requestContent.length ||
-        textarea.selectionEnd !== requestContent.length ||
-        contentRef.current !== requestContent
-      ) {
-        return;
-      }
-
-      try {
-        const candidates = await getCandidates(word);
-
-        if (
-          requestId !== requestIdRef.current ||
-          contentRef.current !== requestContent
-        ) {
-          return;
-        }
-
-        const options = [...new Set([...candidates, word])];
-        const converted = candidates[0] ?? word;
-
-        setSuggestions(options);
-        setActiveSuggestion(0);
-
-        if (converted !== word) {
-          const nextContent = requestContent.slice(0, start) + converted;
-
-          activeWordRef.current = {
-            start,
-            roman: word,
-            converted,
-          };
-
-          setSuggestionRange({
-            start,
-            end: start + converted.length,
-            source: word,
-          });
-
-          pendingCaret.current = start + converted.length;
-          updateContent(nextContent);
-        } else {
-          setSuggestionRange({
-            start,
-            end: start + word.length,
-            source: word,
-          });
-        }
-      } catch (error) {
-        console.error("Automatic transliteration failed:", error);
-      }
-    }, 250);
-  }
-
-  function handleContentChange(value: string) {
-    const activeWord = activeWordRef.current;
-
-    if (activeWord) {
-      const prefix = contentRef.current.slice(0, activeWord.start);
-      const convertedPrefix = prefix + activeWord.converted;
-
-      if (value.startsWith(convertedPrefix)) {
-        const appendedText = value.slice(convertedPrefix.length);
-
-        if (/^[A-Za-z]+$/.test(appendedText)) {
-          const restored = prefix + activeWord.roman + appendedText;
-
-          activeWordRef.current = null;
-          clearSuggestions();
-
-          pendingCaret.current =
-            prefix.length + activeWord.roman.length + appendedText.length;
-
-          requestIdRef.current++;
-          updateContent(restored);
-          scheduleAutomaticTransliteration(restored);
-          return;
-        }
-      }
-
-      activeWordRef.current = null;
-    }
-
-    if (transliterationTimeout.current) {
-      clearTimeout(transliterationTimeout.current);
-    }
-
-    requestIdRef.current++;
-    clearSuggestions();
-
-    updateContent(value);
-    scheduleAutomaticTransliteration(value);
-  }
-
-  function chooseSuggestion(candidate: string) {
-    if (!suggestionRange) {
-      return;
-    }
-
-    const { start, end, source } = suggestionRange;
-    const current = contentRef.current;
-
-    const expectedText = activeWordRef.current?.converted ?? source;
-
-    if (current.slice(start, end) !== expectedText) {
-      if (current.slice(start, end) !== source) {
-        return;
-      }
-    }
-
-    const nextContent =
-      current.slice(0, start) + candidate + current.slice(end);
-
-    activeWordRef.current = {
-      start,
-      roman: source,
-      converted: candidate,
-    };
-
-    requestIdRef.current++;
-
-    if (transliterationTimeout.current) {
-      clearTimeout(transliterationTimeout.current);
-    }
-
-    clearSuggestions();
-
-    pendingCaret.current = start + candidate.length;
-    updateContent(nextContent);
-
-    textareaRef.current?.focus();
-  }
-
-  async function handleContentKeyDown(
-    event: React.KeyboardEvent<HTMLTextAreaElement>,
-  ) {
-    if (suggestions.length > 0 && suggestionRange) {
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-
-        setActiveSuggestion((current) => (current + 1) % suggestions.length);
-
-        return;
-      }
-
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-
-        setActiveSuggestion(
-          (current) => (current - 1 + suggestions.length) % suggestions.length,
-        );
-
-        return;
-      }
-
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-
-        const selected = suggestions[activeSuggestion] ?? suggestions[0];
-
-        chooseSuggestion(selected);
-        return;
-      }
-
-      if (event.key === "Escape") {
-        event.preventDefault();
-        clearSuggestions();
-        return;
-      }
-    }
-
-    if (
-      !bengaliTyping ||
-      event.nativeEvent.isComposing ||
-      event.ctrlKey ||
-      event.metaKey ||
-      event.altKey ||
-      event.currentTarget.selectionStart !== event.currentTarget.selectionEnd
-    ) {
-      return;
-    }
-
-    const delimiters = [
-      " ",
-      ",",
-      ".",
-      "?",
-      "!",
-      ";",
-      ":",
-      ")",
-      "]",
-      "}",
-      "'",
-      '"',
-      "Enter",
-    ];
-
-    if (!delimiters.includes(event.key)) {
-      return;
-    }
-
-    const cursor = event.currentTarget.selectionStart;
-    const originalContent = contentRef.current;
-
-    const match = originalContent.slice(0, cursor).match(/[A-Za-z]+$/);
-
-    if (!match) {
-      return;
-    }
-
-    const word = match[0];
-    const wordStart = cursor - word.length;
-    const delimiter = event.key === "Enter" ? "\n" : event.key;
-    const requestId = ++requestIdRef.current;
-
-    if (transliterationTimeout.current) {
-      clearTimeout(transliterationTimeout.current);
-    }
-
-    event.preventDefault();
-
-    try {
-      const candidates = await getCandidates(word);
-
-      if (
-        requestId !== requestIdRef.current ||
-        contentRef.current !== originalContent
-      ) {
-        return;
-      }
-
-      const converted = candidates[0] ?? word;
-
-      const nextContent =
-        originalContent.slice(0, wordStart) +
-        converted +
-        delimiter +
-        originalContent.slice(cursor);
-
-      activeWordRef.current = null;
-      clearSuggestions();
-
-      pendingCaret.current = wordStart + converted.length + delimiter.length;
-
-      updateContent(nextContent);
-    } catch (error) {
-      console.error("Word-boundary transliteration failed:", error);
-
-      if (
-        requestId === requestIdRef.current &&
-        contentRef.current === originalContent
-      ) {
-        const nextContent =
-          originalContent.slice(0, cursor) +
-          delimiter +
-          originalContent.slice(cursor);
-
-        pendingCaret.current = cursor + delimiter.length;
-        updateContent(nextContent);
-      }
-    }
-  }
-
-  function toggleBengaliTyping() {
-    if (transliterationTimeout.current) {
-      clearTimeout(transliterationTimeout.current);
-    }
-
-    requestIdRef.current++;
-    activeWordRef.current = null;
-
-    clearSuggestions();
-    setBengaliTyping((enabled) => !enabled);
-  }
 
   return (
     <>
@@ -709,7 +706,6 @@ export default function WorkEditor({
               <div className="max-h-40 overflow-y-auto py-1">
                 {suggestions.map((candidate, index) => {
                   const isEnglish = candidate === suggestionRange.source;
-
                   const isActive = index === activeSuggestion;
 
                   return (
@@ -727,7 +723,7 @@ export default function WorkEditor({
                       }`}
                     >
                       <span
-                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-[11px] ${
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center text-[11px] ${
                           isEnglish ? "text-[#b5b5b5]" : "text-[#75beff]"
                         }`}
                       >
