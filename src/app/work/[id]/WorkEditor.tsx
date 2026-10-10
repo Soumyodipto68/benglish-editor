@@ -11,6 +11,7 @@ import {
 
 import WorkEditorHeader from "./components/WorkEditorHeader";
 import SuggestionPopup from "./components/SuggestionPopup";
+import ExportWorkButton from "./components/ExportWorkButton";
 
 type WorkEditorProps = {
   workId: string;
@@ -830,14 +831,17 @@ export default function WorkEditor({
 
   return (
     <>
-      <WorkEditorHeader
-        title={title}
-        onTitleChange={handleTitleChange}
-        bengaliTyping={bengaliTyping}
-        onToggleBengaliTyping={toggleBengaliTyping}
-        saveStatus={saveStatus}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <WorkEditorHeader
+          title={title}
+          onTitleChange={handleTitleChange}
+          bengaliTyping={bengaliTyping}
+          onToggleBengaliTyping={toggleBengaliTyping}
+          saveStatus={saveStatus}
+        />
 
+        <ExportWorkButton title={title} content={content} />
+      </div>
       <div className="mt-8 overflow-visible rounded-xl border border-[#383838] bg-[#1e1e1e]">
         <div ref={editorBodyRef} className="relative">
           <SuggestionPopup
