@@ -287,51 +287,68 @@ export default function WorkEditor({
   }
 
   // Show suggestions after a consistent 250 ms pause.
-  // The Roman word remains unchanged until the user commits a choice.
+  // Ignore outdated requests without blocking the editor.
   function scheduleAutomaticTransliteration(value: string) {
     if (transliterationTimeout.current) {
       clearTimeout(transliterationTimeout.current);
+      transliterationTimeout.current = null;
     }
 
     if (!bengaliTypingRef.current) {
       return;
     }
 
-    const match = value.match(/[A-Za-z]+$/);
+    const textarea = textareaRef.current;
+
+    if (!textarea) {
+      return;
+    }
+
+    const cursor = textarea.selectionStart;
+
+    // Suggestions apply to the Roman word immediately before the caret,
+    // not necessarily the word at the end of the document.
+    const beforeCaret = value.slice(0, cursor);
+    const match = beforeCaret.match(/[A-Za-z]+$/);
 
     if (!match || match[0].length < 2) {
       return;
     }
 
     const word = match[0];
-    const start = value.length - word.length;
+    const start = cursor - word.length;
     const requestId = ++requestIdRef.current;
 
     transliterationTimeout.current = setTimeout(async () => {
-      const textarea = textareaRef.current;
+      const currentTextarea = textareaRef.current;
 
       if (
-        !textarea ||
-        textarea.selectionStart !== value.length ||
-        textarea.selectionEnd !== value.length ||
-        contentRef.current !== value
+        !currentTextarea ||
+        !bengaliTypingRef.current ||
+        requestId !== requestIdRef.current ||
+        contentRef.current !== value ||
+        currentTextarea.selectionStart !== cursor ||
+        currentTextarea.selectionEnd !== cursor
       ) {
         return;
       }
 
       try {
         const candidates = await getCandidates(word);
-        const current = contentRef.current;
-        const currentTextarea = textareaRef.current;
 
+        const latestTextarea = textareaRef.current;
+        const current = contentRef.current;
+
+        // Discard results if the user has typed, moved the caret,
+        // changed modes, or started a newer suggestion request.
         if (
           requestId !== requestIdRef.current ||
           !bengaliTypingRef.current ||
-          !currentTextarea ||
-          currentTextarea.selectionStart !== current.length ||
-          currentTextarea.selectionEnd !== current.length ||
-          current.slice(start, start + word.length) !== word ||
-          /[A-Za-z]/.test(current[start + word.length] ?? "")
+          !latestTextarea ||
+          current !== value ||
+          latestTextarea.selectionStart !== cursor ||
+          latestTextarea.selectionEnd !== cursor ||
+          current.slice(start, start + word.length) !== word
         ) {
           return;
         }
