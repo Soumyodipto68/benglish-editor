@@ -1,6 +1,9 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import mammoth from "mammoth";
+
+export const runtime = "nodejs";
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 
@@ -9,7 +12,10 @@ export async function POST(request: Request) {
     const session = await auth();
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 },
+      );
     }
 
     const formData = await request.formData();
@@ -18,30 +24,32 @@ export async function POST(request: Request) {
 
     if (!(file instanceof File)) {
       return NextResponse.json(
-        { error: "Please select a TXT file" },
+        { error: "Please select a TXT or DOCX file." },
         { status: 400 },
       );
     }
 
-    if (!file.name.toLowerCase().endsWith(".txt")) {
+    const extension = file.name.split(".").pop()?.toLowerCase();
+
+    if (extension !== "txt" && extension !== "docx") {
       return NextResponse.json(
-        { error: "Only .txt files are supported right now" },
+        { error: "Only .txt and .docx files are supported." },
         { status: 400 },
       );
     }
 
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: "File size must be 2 MB or less" },
+        { error: "File size must be 2 MB or less." },
         { status: 400 },
       );
     }
 
-    const title = file.name.replace(/\.txt$/i, "").trim();
+    const title = file.name.replace(/\.(txt|docx)$/i, "").trim();
 
     if (!title) {
       return NextResponse.json(
-        { error: "The filename cannot be empty" },
+        { error: "The filename cannot be empty." },
         { status: 400 },
       );
     }
@@ -50,15 +58,30 @@ export async function POST(request: Request) {
 
     try {
       const bytes = await file.arrayBuffer();
-      content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 
-      // Remove a UTF-8 BOM if the file contains one.
-      content = content.replace(/^\uFEFF/, "");
-    } catch {
+      if (extension === "txt") {
+        content = new TextDecoder("utf-8", {
+          fatal: true,
+        }).decode(bytes);
+
+        // Remove UTF-8 BOM if present.
+        content = content.replace(/^\uFEFF/, "");
+      } else {
+        const result = await mammoth.extractRawText({
+          buffer: Buffer.from(bytes),
+        });
+
+        content = result.value;
+      }
+    } catch (error) {
+      console.error("File text extraction failed:", error);
+
       return NextResponse.json(
         {
           error:
-            "Could not read the file as UTF-8. Please save it as UTF-8 and try again.",
+            extension === "docx"
+              ? "Could not read this DOCX file. Please check that it is a valid Word document."
+              : "Could not read the file as UTF-8. Please save it as UTF-8 and try again.",
         },
         { status: 400 },
       );
@@ -80,7 +103,7 @@ export async function POST(request: Request) {
 
       if (!folder) {
         return NextResponse.json(
-          { error: "Folder not found" },
+          { error: "Folder not found." },
           { status: 404 },
         );
       }
@@ -97,7 +120,7 @@ export async function POST(request: Request) {
 
     if (!draftsFolder) {
       return NextResponse.json(
-        { error: "Drafts folder not found" },
+        { error: "Drafts folder not found." },
         { status: 500 },
       );
     }
@@ -118,16 +141,16 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        message: "TXT file imported successfully",
+        message: `${extension.toUpperCase()} file imported successfully.`,
         work,
       },
       { status: 201 },
     );
   } catch (error) {
-    console.error("Failed to import TXT file:", error);
+    console.error("File import failed:", error);
 
     return NextResponse.json(
-      { error: "Failed to import TXT file" },
+      { error: "Failed to import the file." },
       { status: 500 },
     );
   }
