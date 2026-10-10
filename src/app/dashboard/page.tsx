@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import NewWorkButton from "./components/NewWorkButton";
 import WorkActions from "./components/WorkActions";
+import ImportWorkButton from "./components/ImportWorkButton";
 
 type DashboardPageProps = {
   searchParams: Promise<{
@@ -130,14 +131,19 @@ export default async function DashboardPage({
               : `Welcome back, ${session.user.name ?? "Writer"}.`}
           </p>
         </div>
+        <div className="flex items-center gap-2">
+          <NewWorkButton
+            folders={folders.map((folder) => ({
+              id: folder.id,
+              name: folder.name,
+            }))}
+            defaultFolderId={selectedFolder?.id ?? draftsFolder?.id}
+          />
 
-        <NewWorkButton
-          folders={folders.map((folder) => ({
-            id: folder.id,
-            name: folder.name,
-          }))}
-          defaultFolderId={selectedFolder?.id ?? draftsFolder?.id}
-        />
+          <ImportWorkButton
+            defaultFolderId={selectedFolder?.id ?? draftsFolder?.id}
+          />
+        </div>
       </div>
 
       {/* Stats */}
