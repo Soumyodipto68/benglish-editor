@@ -1,7 +1,10 @@
 "use client";
 
+import ExportWorkButton from "./ExportWorkButton";
+
 type WorkEditorHeaderProps = {
   title: string;
+  content: string;
   onTitleChange: (value: string) => void;
   bengaliTyping: boolean;
   onToggleBengaliTyping: () => void;
@@ -10,13 +13,14 @@ type WorkEditorHeaderProps = {
 
 export default function WorkEditorHeader({
   title,
+  content,
   onTitleChange,
   bengaliTyping,
   onToggleBengaliTyping,
   saveStatus,
 }: WorkEditorHeaderProps) {
   return (
-    <div className="flex items-start justify-between gap-6">
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
       <div className="min-w-0 flex-1">
         <p className="text-sm text-zinc-500">Work Editor</p>
 
@@ -28,7 +32,9 @@ export default function WorkEditorHeader({
         />
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <ExportWorkButton title={title} content={content} />
+
         <button
           type="button"
           aria-pressed={bengaliTyping}
@@ -43,6 +49,7 @@ export default function WorkEditorHeader({
         </button>
 
         <span
+          role="status"
           className={`rounded-full px-3 py-1.5 text-xs ${
             saveStatus === "saved"
               ? "bg-zinc-900 text-green-500"
